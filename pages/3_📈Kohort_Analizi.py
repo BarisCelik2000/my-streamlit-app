@@ -10,7 +10,7 @@ st.set_page_config(page_title="Kohort Analizi", layout="wide")
 
 @st.cache_data
 def veriyi_getir():
-    dosya_adi = 'satis_verileri.json'
+    dosya_adi = 'satis_verileri_guncellenmis.json'
     return veriyi_yukle_ve_temizle(dosya_adi)
 
 st.title("📈 Kohort Analizi")
