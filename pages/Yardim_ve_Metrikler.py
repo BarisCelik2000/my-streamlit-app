@@ -8,7 +8,7 @@ st.set_page_config(page_title="Yardım ve Metrikler", layout="wide")
 
 @st.cache_data
 def veriyi_getir():
-    dosya_adi = 'satis_verileri.xlsx'
+    dosya_adi = 'satis_verileri.json'
     return veriyi_yukle_ve_temizle(dosya_adi)
 
 st.title("ℹ️ Yardım ve Metrik Tanımları")

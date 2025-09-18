@@ -16,7 +16,7 @@ st.set_page_config(page_title="Karşılaştırma Araçları", layout="wide")
 
 @st.cache_data
 def veriyi_getir_ve_isle():
-    dosya_adi = 'satis_verileri.xlsx' 
+    dosya_adi = 'satis_verileri.json' 
     temiz_df = veriyi_yukle_ve_temizle(dosya_adi)
     rfm_df = rfm_skorlarini_hesapla(temiz_df)
     segmentli_df = musterileri_segmentle(rfm_df)

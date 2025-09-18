@@ -8,6 +8,7 @@ def veriyi_yukle_ve_temizle(dosya_yolu, varsayilan_kar_marji=0.25):
     """
     NİHAİ VERSİYON: Dosyadaki kolon adlarına göre kendini ayarlar. 'Maliyet' kolonu
     yoksa hata vermek yerine, varsayılan kar marjı ile çalışır.
+    .json desteği en sağlam haliyle güncellendi.
     """
     print(f"'{dosya_yolu}' yükleniyor...")
     
@@ -18,8 +19,41 @@ def veriyi_yukle_ve_temizle(dosya_yolu, varsayilan_kar_marji=0.25):
             df = pd.read_csv(dosya_yolu, sep=';', decimal=',')
         except Exception:
             df = pd.read_csv(dosya_yolu, sep=',', decimal='.')
+            
+    # --- YENİ ve SAĞLAM JSON OKUMA MANTIĞI ---
+    elif dosya_yolu.endswith('.json'):
+        try:
+            # 1. Önce, her satırın tek bir JSON olduğu "JSON Lines" formatını dene.
+            # "Trailing data" hatasının en yaygın sebebi budur.
+            df = pd.read_json(
+                dosya_yolu, 
+                orient='records', 
+                lines=True, 
+                convert_dates=['Tarih', 'tarih', 'Date', 'invoicedate']
+            )
+            print("✓ JSON dosyası 'JSON Lines' formatında başarıyla okundu.")
+        except ValueError:
+            # 2. Eğer "JSON Lines" başarısız olursa, standart formatı (tek bir büyük liste) dene.
+            print("UYARI: JSON Lines formatı okunamadı, standart JSON formatı deneniyor...")
+            try:
+                df = pd.read_json(
+                    dosya_yolu, 
+                    orient='records', 
+                    convert_dates=['Tarih', 'tarih', 'Date', 'invoicedate']
+                )
+                print("✓ JSON dosyası standart formatta başarıyla okundu.")
+            except Exception as e:
+                # 3. Eğer ikisi de başarısız olursa, kullanıcıya bilgilendirici bir hata göster.
+                raise ValueError(
+                    "JSON dosyası okunamadı. Lütfen dosyanın yapısını kontrol edin. "
+                    "Dosya ya tek bir büyük liste '[{...}, {...}]' şeklinde olmalı, "
+                    "ya da her satırda tek bir JSON nesnesi '{...}' içermelidir (JSON Lines). "
+                    f"Orijinal Hata: {e}"
+                )
+    # --- GÜNCELLEME SONU ---
+        
     else:
-        raise ValueError("Desteklenmeyen dosya formatı. Lütfen .xlsx veya .csv kullanın.")
+        raise ValueError("Desteklenmeyen dosya formatı. Lütfen .xlsx, .csv veya .json kullanın.")
 
     print("Veri başarıyla yüklendi. Temizleme işlemleri başlıyor...")
     
@@ -53,7 +87,10 @@ def veriyi_yukle_ve_temizle(dosya_yolu, varsayilan_kar_marji=0.25):
     df.dropna(subset=gerekli_kolonlar_temel, inplace=True)
     df = df[df['miktar'] > 0]
     df = df[df['birimfiyat'] > 0]
-    
+
+    if 'maliyet' in df.columns:
+        df = df[df['maliyet'] > 0]
+
     df['toplamtutar'] = df['miktar'] * df['birimfiyat']
     
     if 'maliyet' in df.columns:

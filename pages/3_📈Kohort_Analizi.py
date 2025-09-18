@@ -1,4 +1,4 @@
-# pages/3_📈_Kohort_Analizi.py
+# pages/3_Kohort_Analizi.py
 
 import streamlit as st
 import plotly.express as px
@@ -10,7 +10,7 @@ st.set_page_config(page_title="Kohort Analizi", layout="wide")
 
 @st.cache_data
 def veriyi_getir():
-    dosya_adi = 'satis_verileri.xlsx'
+    dosya_adi = 'satis_verileri.json'
     return veriyi_yukle_ve_temizle(dosya_adi)
 
 st.title("📈 Kohort Analizi")
