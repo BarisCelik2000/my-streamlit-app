@@ -93,14 +93,32 @@ def veriyi_yukle_ve_temizle(dosya_yolu, varsayilan_kar_marji=0.25):
 
     df['toplamtutar'] = df['miktar'] * df['birimfiyat']
     
+    # --- GÜNCELLENMİŞ KAR HESAPLAMA MANTIĞI ---
     if 'maliyet' in df.columns:
         df.dropna(subset=['maliyet'], inplace=True)
-        df['netkar'] = df['toplamtutar'] - (df['miktar'] * df['maliyet'])
-        print("✓ Gerçek maliyet verisi bulundu ve 'NetKar' kolonu bu veriye göre hesaplandı.")
+        
+        # Özel kural uygulanacak ürünün adını tanımla
+        ozel_urun_adi = "PASLANMAZ SARF MALZEMELERİ (AD)"
+        
+        # Bu ürüne ait satırları belirlemek için bir maske oluştur
+        maske_ozel_urun = df['urunkodu'].str.strip().str.upper() == ozel_urun_adi
+        
+        # Karı koşullu olarak hesapla
+        # Kural 1: Eğer ürün özel ürün ise, kar marjı uygula
+        kar_marjli = df['toplamtutar'] * varsayilan_kar_marji
+        # Kural 2: Diğer tüm ürünler için gerçek maliyeti kullan
+        maliyet_bazli = df['toplamtutar'] - (df['miktar'] * df['maliyet'])
+        
+        # np.where ile koşulu uygula: maske doğruysa kar_marjli, değilse maliyet_bazli değeri ata
+        df['netkar'] = np.where(maske_ozel_urun, kar_marjli, maliyet_bazli)
+        
+        print(f"✓ 'NetKar' kolonu, '{ozel_urun_adi}' için özel kural uygulanarak hesaplandı.")
+
     else:
+        # Maliyet sütunu hiç yoksa, tüm ürünlere kar marjı uygula
         df['netkar'] = df['toplamtutar'] * varsayilan_kar_marji
         print(f"UYARI: Dosyada 'Maliyet' kolonu bulunamadı. 'NetKar' kolonu, %{varsayilan_kar_marji*100} varsayılan kar marjı ile hesaplandı.")
-
+    # --- GÜNCELLEME SONU ---
     final_rename_map = {
         'musteriid': 'MusteriID', 'musteriadi': 'MusteriAdi', 'urunkodu': 'UrunKodu', 
         'kategori': 'Kategori', 'tarih': 'Tarih', 'miktar': 'Miktar', 
