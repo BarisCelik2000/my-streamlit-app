@@ -106,20 +106,24 @@ donem_df = temiz_df[
 ]
 donem_df_filtrelenmis = donem_df[donem_df['MusteriID'].isin(nihai_filtrelenmis_df.index)]
 donem_cirosu = donem_df_filtrelenmis['ToplamTutar'].sum()
+donem_net_kari = donem_df_filtrelenmis['NetKar'].sum() # Net Kar hesaplaması eklendi
 donem_islem_sayisi = len(donem_df_filtrelenmis)
 
-# Anomali KPI Hesaplaması
 profil_anomali_sayisi = len(set(st.session_state.get('profil_anomalileri', [])).intersection(set(nihai_filtrelenmis_df.index)))
 davranissal_anomali_sayisi = len(set(st.session_state.get('davranissal_anomaliler', [])).intersection(set(nihai_filtrelenmis_df.index)))
 toplam_anomali = profil_anomali_sayisi + davranissal_anomali_sayisi
 
 # KPI Kartları
-col1, col2, col3, col4, col5 = st.columns(5)
-col1.metric("Aktif Müşteri Sayısı", nihai_filtrelenmis_df.shape[0])
+col1, col2, col3 = st.columns(3)
+col1.metric("Aktif Müşteri Sayısı", f"{nihai_filtrelenmis_df.shape[0]:,}")
 col2.metric("Seçilen Dönemdeki Ciro", f"{donem_cirosu:,.0f} €")
-col3.metric("Seçilen Dönemdeki İşlem Sayısı", f"{donem_islem_sayisi:,}")
-col4.metric("Ortalama Yaşam Boyu Değeri (CLV)", f"{nihai_filtrelenmis_df['CLV_Net_Kar'].mean():,.0f} €")
-col5.metric("⚠️ Anormal Müşteri Sayısı", f"{toplam_anomali}", help="Anomali Tespiti sayfasında analizi çalıştırdıktan sonra burada görünür.")
+col3.metric("Seçilen Dönemdeki Net Kar", f"{donem_net_kari:,.0f} €") # Yeni KPI
+
+col4, col5, col6 = st.columns(3)
+col4.metric("Seçilen Dönemdeki İşlem Sayısı", f"{donem_islem_sayisi:,}")
+col5.metric("Ortalama Yaşam Boyu Değeri (CLV)", f"{nihai_filtrelenmis_df['CLV_Net_Kar'].mean():,.0f} €")
+col6.metric("⚠️ Anormal Müşteri Sayısı", f"{toplam_anomali}", help="Anomali Tespiti sayfasında analizi çalıştırdıktan sonra burada görünür.")
+            
 
 st.markdown("---")
 

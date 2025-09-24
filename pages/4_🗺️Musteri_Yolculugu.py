@@ -17,9 +17,10 @@ def veriyi_getir_ve_isle():
     segmentli_df = musterileri_segmentle(rfm_df)
     churn_df, _, _, _, _, _ = churn_tahmin_modeli_olustur(segmentli_df)
     clv_df = clv_hesapla(churn_df)
-    return temiz_df, clv_df
-
-temiz_df, sonuclar_df = veriyi_getir_ve_isle()
+    sonuclar_df = clv_df.copy()
+    if 'MusteriAdi' not in sonuclar_df.columns:
+        sonuclar_df['MusteriAdi'] = sonuclar_df.index
+    return temiz_df, sonuclar_df
 
 st.title("🗺️ Müşteri Yaşam Döngüsü Analizi")
 st.markdown("""
@@ -85,7 +86,7 @@ else:
             deger_formati_metin = "müşteri"
             deger_formati_gorsel = ".0f"
             title_text = f"{onceki_donem_str} ile {son_donem_str} Arası Müşteri Sayısı Akışı"
-        else:
+        else: # Toplam CLV
             gecis_df_sankey = gecis_df_tam.groupby(['Onceki_Segment', 'Simdiki_Segment'])['CLV_Net_Kar'].sum().reset_index(name='deger')
             deger_formati_metin = "€ CLV"
             deger_formati_gorsel = ",.0f €"
@@ -121,33 +122,64 @@ else:
         st.markdown("---")
         st.subheader("💡 Otomatik Analiz Özeti")
         
+        gecis_df_tam_detay = gecis_df_tam.reset_index().merge(sonuclar_df[['MusteriAdi']], on='MusteriID', how='left')
+
+        # --- DÜZELTME BURADA: `ic_gecisler` tanımı sütunların dışına taşındı ---
+        segment_degerleri = {'Şampiyonlar': 5, 'Potansiyel Şampiyonlar': 4, 'Sadık Müşteriler': 3, 'Riskli Müşteriler': 2, 'Kayıp Müşteriler': 1}
+        ic_gecisler = gecis_df_sankey[~gecis_df_sankey['Onceki_Segment'].isin(['Yeni Müşteri']) & ~gecis_df_sankey['Simdiki_Segment'].isin(['Pasif / Churn'])].copy()
+        if not ic_gecisler.empty:
+            ic_gecisler['onceki_deger'] = ic_gecisler['Onceki_Segment'].map(segment_degerleri).astype(float)
+            ic_gecisler['simdiki_deger'] = ic_gecisler['Simdiki_Segment'].map(segment_degerleri).astype(float)
+        # --- DÜZELTME SONU ---
+        
         col_insight1, col_insight2 = st.columns(2)
         
         with col_insight1:
             yeni_musteri_akisi = gecis_df_sankey[gecis_df_sankey['Onceki_Segment'] == 'Yeni Müşteri']
             if not yeni_musteri_akisi.empty:
                 en_buyuk_kazanim = yeni_musteri_akisi.loc[yeni_musteri_akisi['deger'].idxmax()]
-                st.success(f"**Yeni Kazanım:** En çok yeni müşteri **{en_buyuk_kazanim['Simdiki_Segment']}** segmentine dahil oldu ({en_buyuk_kazanim['deger']:,.0f} {deger_formati_metin}).")
-
-            segment_degerleri = {'Şampiyonlar': 5, 'Potansiyel Şampiyonlar': 4, 'Sadık Müşteriler': 3, 'Riskli Müşteriler': 2, 'Kayıp Müşteriler': 1}
-            ic_gecisler = gecis_df_sankey[~gecis_df_sankey['Onceki_Segment'].isin(['Yeni Müşteri']) & ~gecis_df_sankey['Simdiki_Segment'].isin(['Pasif / Churn'])].copy()
-            ic_gecisler['onceki_deger'] = ic_gecisler['Onceki_Segment'].map(segment_degerleri).astype(float)
-            ic_gecisler['simdiki_deger'] = ic_gecisler['Simdiki_Segment'].map(segment_degerleri).astype(float)
-            pozitif_akislar = ic_gecisler[ic_gecisler['simdiki_deger'] > ic_gecisler['onceki_deger']]
+                st.success(f"**Yeni Kazanım:** En çok yeni müşteri **{en_buyuk_kazanim['Simdiki_Segment']}** segmentine dahil oldu.")
+                with st.expander(f"Bu {en_buyuk_kazanim['deger']:,.0f} müşteriyi gör"):
+                    filtrelenmis = gecis_df_tam_detay[
+                        (gecis_df_tam_detay['Onceki_Segment'] == 'Yeni Müşteri') &
+                        (gecis_df_tam_detay['Simdiki_Segment'] == en_buyuk_kazanim['Simdiki_Segment'])
+                    ]
+                    st.dataframe(filtrelenmis[['MusteriAdi', 'CLV_Net_Kar']])
+            
+            pozitif_akislar = ic_gecisler[ic_gecisler['simdiki_deger'] > ic_gecisler['onceki_deger']] if not ic_gecisler.empty else pd.DataFrame()
             if not pozitif_akislar.empty:
                 en_iyi_gecis = pozitif_akislar.loc[pozitif_akislar['deger'].idxmax()]
-                st.info(f"**En İyi Gelişme:** En büyük pozitif segment geçişi **{en_iyi_gecis['Onceki_Segment']}** → **{en_iyi_gecis['Simdiki_Segment']}** arasında yaşandı ({en_iyi_gecis['deger']:,.0f} {deger_formati_metin}).")
+                st.info(f"**En İyi Gelişme:** En büyük pozitif geçiş **{en_iyi_gecis['Onceki_Segment']}** → **{en_iyi_gecis['Simdiki_Segment']}** arasında yaşandı.")
+                with st.expander(f"Bu {en_iyi_gecis['deger']:,.0f} müşteriyi gör"):
+                    filtrelenmis = gecis_df_tam_detay[
+                        (gecis_df_tam_detay['Onceki_Segment'] == en_iyi_gecis['Onceki_Segment']) &
+                        (gecis_df_tam_detay['Simdiki_Segment'] == en_iyi_gecis['Simdiki_Segment'])
+                    ]
+                    st.dataframe(filtrelenmis[['MusteriAdi', 'CLV_Net_Kar']])
+
 
         with col_insight2:
             kayip_musteri_akisi = gecis_df_sankey[gecis_df_sankey['Simdiki_Segment'] == 'Pasif / Churn']
             if not kayip_musteri_akisi.empty:
                 en_buyuk_kayip = kayip_musteri_akisi.loc[kayip_musteri_akisi['deger'].idxmax()]
-                st.error(f"**En Kritik Kayıp:** En çok müşteri **{en_buyuk_kayip['Onceki_Segment']}** segmentinden kaybedildi ({en_buyuk_kayip['deger']:,.0f} {deger_formati_metin}).")
+                st.error(f"**En Kritik Kayıp:** En çok müşteri **{en_buyuk_kayip['Onceki_Segment']}** segmentinden kaybedildi.")
+                with st.expander(f"Bu {en_buyuk_kayip['deger']:,.0f} müşteriyi gör"):
+                    filtrelenmis = gecis_df_tam_detay[
+                        (gecis_df_tam_detay['Onceki_Segment'] == en_buyuk_kayip['Onceki_Segment']) &
+                        (gecis_df_tam_detay['Simdiki_Segment'] == 'Pasif / Churn')
+                    ]
+                    st.dataframe(filtrelenmis[['MusteriAdi', 'CLV_Net_Kar']])
             
-            negatif_akislar = ic_gecisler[ic_gecisler['simdiki_deger'] < ic_gecisler['onceki_deger']]
+            negatif_akislar = ic_gecisler[ic_gecisler['simdiki_deger'] < ic_gecisler['onceki_deger']] if not ic_gecisler.empty else pd.DataFrame()
             if not negatif_akislar.empty:
                 en_kotu_gecis = negatif_akislar.loc[negatif_akislar['deger'].idxmax()]
-                st.warning(f"**Dikkat:** En büyük negatif segment geçişi **{en_kotu_gecis['Onceki_Segment']}** → **{en_kotu_gecis['Simdiki_Segment']}** arasında yaşandı ({en_kotu_gecis['deger']:,.0f} {deger_formati_metin}).")
+                st.warning(f"**Dikkat:** En büyük negatif geçiş **{en_kotu_gecis['Onceki_Segment']}** → **{en_kotu_gecis['Simdiki_Segment']}** arasında yaşandı.")
+                with st.expander(f"Bu {en_kotu_gecis['deger']:,.0f} müşteriyi gör"):
+                    filtrelenmis = gecis_df_tam_detay[
+                        (gecis_df_tam_detay['Onceki_Segment'] == en_kotu_gecis['Onceki_Segment']) &
+                        (gecis_df_tam_detay['Simdiki_Segment'] == en_kotu_gecis['Simdiki_Segment'])
+                    ]
+                    st.dataframe(filtrelenmis[['MusteriAdi', 'CLV_Net_Kar']])
             
     else:
         st.error("Lütfen karşılaştırma için birbirinden farklı iki dönem seçin.")

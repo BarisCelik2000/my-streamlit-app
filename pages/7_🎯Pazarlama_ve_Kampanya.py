@@ -27,7 +27,22 @@ temiz_df, sonuclar_df = veriyi_getir_ve_isle()
 
 st.title("🎯 Pazarlama ve Kampanya Modülü")
 
+st.markdown("---")
+st.subheader("Analiz Dönemini Seçin")
+min_tarih_pazarlama = temiz_df['Tarih'].min().date()
+max_tarih_pazarlama = temiz_df['Tarih'].max().date()
+col_tarih_p1, col_tarih_p2 = st.columns(2)
+with col_tarih_p1:
+    baslangic_tarihi_paz = st.date_input("Başlangıç Tarihi", min_tarih_pazarlama, key="paz_start")
+with col_tarih_p2:
+    bitis_tarihi_paz = st.date_input("Bitiş Tarihi", max_tarih_pazarlama, key="paz_end")
 
+# Aktif müşterilere göre ana sonuçları filtrele
+aktif_musteriler = temiz_df[
+    (temiz_df['Tarih'].dt.date >= baslangic_tarihi_paz) & 
+    (temiz_df['Tarih'].dt.date <= bitis_tarihi_paz)
+]['MusteriID'].unique()
+sonuclar_df_filtrelenmis = sonuclar_df[sonuclar_df.index.isin(aktif_musteriler)]
 
 # Sekme sayısı 3'e düşürüldü
 tab1, tab2, tab3 = st.tabs(["Kampanya Fikirleri", "ROI Simülasyonu", "Optimal İndirim Analizi"])
@@ -35,7 +50,7 @@ tab1, tab2, tab3 = st.tabs(["Kampanya Fikirleri", "ROI Simülasyonu", "Optimal �
 with tab1:
     st.header("Segment Bazlı Kampanya Stratejileri")
     st.markdown("Mevcut müşteri segmentlerinize dayanarak hedefe yönelik, aksiyona dönüştürülebilir pazarlama kampanyası fikirleri.")
-    kampanya_onerileri = kampanya_onerileri_uret(sonuclar_df)
+    kampanya_onerileri = kampanya_onerileri_uret(sonuclar_df_filtrelenmis)
     if kampanya_onerileri:
         for segment, detaylar in kampanya_onerileri.items():
             if detaylar.get('Hedef Kitle Büyüklüğü', 0) > 0:
@@ -56,7 +71,7 @@ with tab2:
     col1, col2 = st.columns(2)
     with col1:
         st.subheader("1. Hedef Kitleyi Seçin")
-        segment_listesi = sonuclar_df['Segment'].unique().tolist()
+        segment_listesi = sonuclar_df_filtrelenmis['Segment'].unique().tolist()
         if not segment_listesi:
             st.warning("Analiz edilecek segment bulunamadı.")
         else:
@@ -77,7 +92,7 @@ with tab2:
     if 'hedef_segment' in locals():
         if st.button("ROI Simülasyonunu Çalıştır", type="primary"):
             with st.spinner("Simülasyon hesaplanıyor..."):
-                simulasyon_sonuclari = kampanya_roi_simulasyonu_yap(sonuclar_df, hedef_segment, beklenen_etki_orani, indirim_orani, musteri_basi_maliyet)
+                simulasyon_sonuclari = kampanya_roi_simulasyonu_yap(sonuclar_df_filtrelenmis, hedef_segment, beklenen_etki_orani, indirim_orani, musteri_basi_maliyet)
             
             st.session_state.simulasyon_sonuclari = simulasyon_sonuclari
             st.session_state.simulasyon_parametreleri = (hedef_segment, musteri_basi_maliyet, indirim_orani, beklenen_etki_orani)
@@ -108,7 +123,7 @@ with tab3: # Eskiden tab4 olan bölüm artık tab3
     col1, col2 = st.columns(2)
     with col1:
         st.subheader("1. Hedef ve Maliyetler")
-        segment_listesi_opt = sonuclar_df['Segment'].unique().tolist()
+        segment_listesi_opt = sonuclar_df_filtrelenmis['Segment'].unique().tolist()
         hedef_segment_opt = st.selectbox("Optimizasyon için hedef segmenti seçin:", segment_listesi_opt, key="opt_segment")
         musteri_basi_maliyet_opt = st.number_input("Müşteri Başına İletişim Maliyeti (€)", min_value=0.0, value=0.1, step=0.01, key="opt_maliyet")
 
@@ -121,8 +136,8 @@ with tab3: # Eskiden tab4 olan bölüm artık tab3
     if st.button("Optimal İndirim Oranını Hesapla", type="primary"):
         if 'hedef_segment_opt' in locals() and hedef_segment_opt:
             with st.spinner("Optimizasyon yapılıyor..."):
-                optimizasyon_df, optimal_nokta = optimal_indirim_hesapla(
-                    sonuclar_df, hedef_segment_opt, musteri_basi_maliyet_opt,
+                optimizasyon_df, optimal_nokta = optimal_indirim_hesapla(sonuclar_df_filtrelenmis,
+                    hedef_segment_opt, musteri_basi_maliyet_opt,
                     agirlik_kar=agirlik_kar/100, agirlik_etki=agirlik_etki/100
                 )
             

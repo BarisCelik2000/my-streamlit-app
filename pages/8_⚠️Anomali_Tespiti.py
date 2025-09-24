@@ -1,4 +1,4 @@
-# pages/8_Anomali_Tespiti.py
+# pages/10_Anomali_Tespiti.py
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -20,34 +20,54 @@ def veriyi_getir_ve_isle():
     segmentli_df = musterileri_segmentle(rfm_df)
     churn_df, _, _, _, _, _ = churn_tahmin_modeli_olustur(segmentli_df)
     clv_df = clv_hesapla(churn_df)
-    return temiz_df, clv_df
-
-temiz_df, sonuclar_df = veriyi_getir_ve_isle()
+    sonuclar_df = clv_df
+    return temiz_df, sonuclar_df
 
 st.title("⚠️ Anomali (Aykırı Değer) Tespiti")
 
+temiz_df, sonuclar_df = veriyi_getir_ve_isle()
 
+# --- GENEL TARİH FİLTRESİ ---
+st.markdown("---")
+st.subheader("Analiz Dönemini Seçin")
+st.caption("Sayfadaki tüm analizler (profil, davranışsal, işlem bazlı) burada seçtiğiniz tarih aralığına göre filtrelenecektir.")
+min_tarih = temiz_df['Tarih'].min().date()
+max_tarih = temiz_df['Tarih'].max().date()
+
+col_tarih1, col_tarih2 = st.columns(2)
+with col_tarih1:
+    baslangic_tarihi = st.date_input("Başlangıç Tarihi", min_tarih, min_value=min_tarih, max_value=max_tarih, key="anomali_start")
+with col_tarih2:
+    bitis_tarihi = st.date_input("Bitiş Tarihi", max_tarih, min_value=min_tarih, max_value=max_tarih, key="anomali_end")
+
+# --- DÜZELTİLMİŞ FİLTRELEME MANTIĞI ---
+# Profil Analizi (Tab 1) için: Sadece o dönemde aktif olan MÜŞTERİLERİ al
+aktif_musteri_idler = temiz_df[
+    (temiz_df['Tarih'].dt.date >= baslangic_tarihi) & 
+    (temiz_df['Tarih'].dt.date <= bitis_tarihi)
+]['MusteriID'].unique()
+sonuclar_df_filtrelenmis = sonuclar_df[sonuclar_df.index.isin(aktif_musteri_idler)]
+
+# Davranışsal ve İşlem Analizi (Tab 2 ve 3) için: Sadece o dönemdeki İŞLEMLERİ al
+temiz_df_donem_filtrelenmis = temiz_df[
+    (temiz_df['Tarih'].dt.date >= baslangic_tarihi) & 
+    (temiz_df['Tarih'].dt.date <= bitis_tarihi)]
 
 tab1, tab2, tab3 = st.tabs(["Genel Profil Anomalileri", "Davranışsal Anomaliler (Erken Uyarı)", "İşlem Bazlı Anomaliler"])
 
 with tab1:
-    st.header("Genel Profil Anomalileri (Tüm Müşterilere Kıyasla)")
-    st.markdown("Bu analiz, bir müşterinin RFM profilinin, **genel müşteri kitlesinin** normal davranış kalıplarından ne kadar saptığını gösterir.")
+    st.header("Genel Profil Anomalileri")
+    st.markdown("Bu analiz, seçilen dönemde aktif olan bir müşterinin RFM profilinin, yine o dönemde aktif olan **diğer müşterilerin** normal davranış kalıplarından ne kadar saptığını gösterir.")
     
     algoritma_secimi = st.radio("Kullanılacak Algoritmayı Seçin:", ('Isolation Forest', 'DBSCAN'), horizontal=True, key="algo_radio")
     
-    st.markdown("---")
-    st.header("Analiz Parametreleri")
-
-    # Isolation Forest algoritması seçildiğinde...
     if algoritma_secimi == 'Isolation Forest':
         kontaminasyon = st.slider("Tahmini Anomali Oranı (%)", 1, 20, 5, 1, help="Veri setinizde ne kadar oranda (% olarak) anomali beklediğinizi belirtir.", key="slider_profil_iso") / 100.0
         if st.button("Isolation Forest ile Anomalileri Tespit Et", type="primary"):
             with st.spinner("Anomali tespiti yapılıyor..."):
-                anomali_sonuclari_df = anomali_tespiti_yap(sonuclar_df.copy(), kontaminasyon_orani=kontaminasyon)
+                anomali_sonuclari_df = anomali_tespiti_yap(sonuclar_df_filtrelenmis.copy(), kontaminasyon_orani=kontaminasyon)
                 st.session_state.anomali_sonuclari_df = anomali_sonuclari_df
     
-    # DBSCAN algoritması seçildiğinde...
     elif algoritma_secimi == 'DBSCAN':
         col1, col2 = st.columns(2)
         with col1:
@@ -56,10 +76,9 @@ with tab1:
             min_samples_degeri = st.slider("Min Samples Değeri (Küme Yoğunluğu)", 2, 20, 5, 1)
         if st.button("DBSCAN ile Anomalileri Tespit Et", type="primary"):
             with st.spinner("Yoğunluk bazlı anomali tespiti yapılıyor..."):
-                anomali_sonuclari_df = anomali_tespiti_dbscan(sonuclar_df.copy(), eps=eps_degeri, min_samples=min_samples_degeri)
+                anomali_sonuclari_df = anomali_tespiti_dbscan(sonuclar_df_filtrelenmis.copy(), eps=eps_degeri, min_samples=min_samples_degeri)
                 st.session_state.anomali_sonuclari_df = anomali_sonuclari_df
 
-    # Analiz sonuçları varsa göster
     if 'anomali_sonuclari_df' in st.session_state and not st.session_state.anomali_sonuclari_df.empty:
         anomali_sonuclari_df = st.session_state.anomali_sonuclari_df
         st.success("Analiz tamamlandı!")
@@ -77,10 +96,8 @@ with tab1:
             st.subheader("Tespit Edilen Anormal Müşteriler")
             st.warning(f"Toplam **{len(anormal_musteriler)}** müşteri, normal davranış kalıplarının dışında olarak etiketlendi.")
             
-            # --- GÜNCELLENMİŞ TABLO GÖSTERİMİ ---
             gosterilecek_sutunlar = ['Anomali Nedeni', 'Segment', 'Recency', 'Frequency', 'Monetary']
             
-            # Sadece Isolation Forest skor ürettiği için, skor sütununu ve stili ona göre ekle
             if 'Anomali_Skoru' in anormal_musteriler.columns:
                 gosterilecek_sutunlar.append('Anomali_Skoru')
                 st.info("Tablo, en aykırı müşterileri (skoru en düşük olanlar) en üstte gösterecek şekilde sıralanmıştır.")
@@ -88,7 +105,7 @@ with tab1:
                              .sort_values('Anomali_Skoru', ascending=True)
                              .style.background_gradient(cmap='Reds_r', subset=['Anomali_Skoru'])
                              .format({'Anomali_Skoru': '{:.2f}'}))
-            else: # DBSCAN için
+            else:
                 st.dataframe(anormal_musteriler[gosterilecek_sutunlar])
             
             st.markdown("---")
@@ -118,28 +135,20 @@ with tab1:
             st.subheader("Anomalilerin 3 Boyutlu Görselleştirmesi")
             plot_df = anomali_sonuclari_df.copy()
             plot_df['Anomali_Durumu'] = plot_df['Anomali_Etiketi'].apply(lambda x: 'Anomali' if x == -1 else 'Normal')
-            fig = px.scatter_3d(
-                plot_df, x='Recency', y='Frequency', z='Monetary', color='Anomali_Durumu',
-                color_discrete_map={'Anomali': 'red', 'Normal': 'blue'},
-                hover_data=[plot_df.index]
-            )
+            fig = px.scatter_3d(plot_df, x='Recency', y='Frequency', z='Monetary', color='Anomali_Durumu',
+                                color_discrete_map={'Anomali': 'red', 'Normal': 'blue'},
+                                hover_data=[plot_df.index])
             st.plotly_chart(fig, use_container_width=True)
 
-# --- SEKME 2: DAVRANIŞSAL ANOMALİLER ---
 with tab2:
-    st.header("Davranışsal Anomaliler (Müşterinin Kendi Alışkanlığına Kıyasla)")
+    st.header("Davranışsal Anomaliler (Erken Uyarı)")
     st.markdown("Bu erken uyarı sistemi, bir müşterinin **kendi normal satın alma ritminin dışına çıktığı** anları tespit eder.")
     
-    hassasiyet = st.slider(
-        "Hassasiyet Eşiği (Standart Sapma)",
-        min_value=1.5, max_value=4.0, value=2.5, step=0.1,
-        help="Bir satın alma aralığının 'anormal' sayılması için, müşterinin kendi ortalamasından kaç standart sapma daha uzun olması gerektiğini belirtir.",
-        key="slider_davranis"
-    )
+    hassasiyet = st.slider("Hassasiyet Eşiği (Standart Sapma)", 1.5, 4.0, 2.5, 0.1, key="slider_davranis")
 
     if st.button("Davranışsal Anomalileri Tespit Et", type="primary"):
         with st.spinner("Müşterilerin alışkanlıkları analiz ediliyor..."):
-            davranissal_anomaliler_df = davranissal_anomali_tespiti_yap(temiz_df, hassasiyet=hassasiyet)
+            davranissal_anomaliler_df = davranissal_anomali_tespiti_yap(temiz_df_donem_filtrelenmis, hassasiyet=hassasiyet)
             st.session_state.davranissal_anomaliler_df = davranissal_anomaliler_df
             
     if 'davranissal_anomaliler_df' in st.session_state:
@@ -161,43 +170,29 @@ with tab2:
                 'Normal Alım Aralığı (Ort. Gün)': '{:.1f}', 'Anormal Alım Aralığı (Gün)': '{:.0f}'
             }))
 
-            # --- YENİ EKLENEN BÖLÜM: Davranışsal Anomali Trend Grafiği ---
             st.markdown("---")
             st.subheader("Davranışsal Anomali Trendi")
             st.markdown("Tespit edilen anomalilerin aylara göre dağılımı.")
 
             df_trend = davranissal_anomaliler_df.copy()
-            # Anomaliyi tespit ettiğimiz son alım tarihine göre aylık gruplama yap
             df_trend['Anomali_Ayi'] = pd.to_datetime(df_trend['Son_Alim_Tarihi']).dt.to_period('M')
-            
             anomali_sayilari_aylik = df_trend.groupby('Anomali_Ayi').size().reset_index(name='Anomali_Sayisi')
             anomali_sayilari_aylik['Anomali_Ayi'] = anomali_sayilari_aylik['Anomali_Ayi'].dt.to_timestamp()
-            
-            fig_trend = px.bar(
-                anomali_sayilari_aylik,
-                x='Anomali_Ayi',
-                y='Anomali_Sayisi',
-                title='Aylara Göre Tespit Edilen Davranışsal Anomali Sayısı',
-                labels={'Anomali_Ayi': 'Ay', 'Anomali_Sayisi': 'Anomali Sayısı'}
-            )
+            fig_trend = px.bar(anomali_sayilari_aylik, x='Anomali_Ayi', y='Anomali_Sayisi',
+                               title='Aylara Göre Tespit Edilen Davranışsal Anomali Sayısı',
+                               labels={'Anomali_Ayi': 'Ay', 'Anomali_Sayisi': 'Anomali Sayısı'})
             st.plotly_chart(fig_trend, use_container_width=True)
 
-# --- SEKME 3: İŞLEM BAZLI ANOMALİLER ---
 with tab3:
     st.header("İşlem Bazlı Anomaliler (Sahtekarlık/Fırsat Tespiti)")
     st.markdown("Bu analiz, **tekil işlem bazında** aykırı durumları tespit eder.")
     
-    kontaminasyon_islem = st.slider(
-        "Tahmini Anormal İşlem Oranı (%)", 
-        min_value=0.1, max_value=5.0, value=1.0, step=0.1,
-        help="Tüm işlemlerin yüzde kaçının anormal olmasını beklediğinizi belirtir.",
-        key="slider_islem"
-    ) / 100.0
+    kontaminasyon_islem = st.slider("Tahmini Anormal İşlem Oranı (%)", 0.1, 5.0, 1.0, step=0.1, key="slider_islem") / 100.0
 
     if st.button("İşlem Anomalilerini Tespit Et", type="primary"):
-        with st.spinner("Tüm işlemler analiz ediliyor..."):
-            islem_anomalileri_df = islem_bazli_anomali_tespiti_yap(temiz_df, kontaminasyon_orani=kontaminasyon_islem)
-            st.session_state.islem_anomalileri_df = islem_anomalileri_df # Sonuçları kaydet
+        with st.spinner("Seçilen dönemdeki işlemler analiz ediliyor..."):
+            islem_anomalileri_df = islem_bazli_anomali_tespiti_yap(temiz_df_donem_filtrelenmis, kontaminasyon_orani=kontaminasyon_islem)
+            st.session_state.islem_anomalileri_df = islem_anomalileri_df
             
     if 'islem_anomalileri_df' in st.session_state:
         islem_anomalileri_df = st.session_state.islem_anomalileri_df
@@ -210,7 +205,6 @@ with tab3:
             st.warning(f"Toplam **{len(islem_anomalileri_df)}** adet anormal işlem tespit edildi.")
             st.info("Tablo, en aykırı işlemleri (skoru en düşük olanlar) en üstte gösterecek şekilde sıralanmıştır.")
             
-            # --- GÜNCELLENMİŞ TABLO GÖSTERİMİ ---
             st.dataframe(islem_anomalileri_df[[
                 'MusteriID', 'Tarih', 'UrunKodu', 'Miktar', 'BirimFiyat', 'ToplamTutar', 'Anomali_Skoru'
             ]].sort_values('Anomali_Skoru', ascending=True)
@@ -219,10 +213,10 @@ with tab3:
             }).background_gradient(cmap='Reds_r', subset=['Anomali_Skoru']))
             
             st.subheader("Anormal İşlemlerin Görselleştirilmesi")
-            fig = px.scatter(
+            fig_islem = px.scatter(
                 islem_anomalileri_df, x='Miktar', y='ToplamTutar', color='Anomali_Skoru',
                 color_continuous_scale=px.colors.sequential.Reds_r,
                 hover_data=['MusteriID', 'UrunKodu', 'Tarih'],
                 title="Anormal İşlemlerin Miktar ve Tutar Dağılımı"
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig_islem, use_container_width=True)

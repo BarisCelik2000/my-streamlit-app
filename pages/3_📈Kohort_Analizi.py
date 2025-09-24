@@ -19,6 +19,23 @@ st.markdown("Bu analiz, müşterilerinizi başlangıç tarihlerine (kohortların
 temiz_df = veriyi_getir()
 
 st.markdown("---")
+st.subheader("Analiz Dönemini Seçin")
+min_tarih = temiz_df['Tarih'].min().date()
+max_tarih = temiz_df['Tarih'].max().date()
+
+col_tarih1, col_tarih2 = st.columns(2)
+with col_tarih1:
+    baslangic_tarihi = st.date_input("Başlangıç Tarihi", min_tarih, min_value=min_tarih, max_value=max_tarih, key="kohort_start")
+with col_tarih2:
+    bitis_tarihi = st.date_input("Bitiş Tarihi", max_tarih, min_value=min_tarih, max_value=max_tarih, key="kohort_end")
+
+# Ana DataFrame'i seçilen tarihlere göre filtrele
+filtrelenmis_df = temiz_df[
+    (temiz_df['Tarih'].dt.date >= baslangic_tarihi) & 
+    (temiz_df['Tarih'].dt.date <= bitis_tarihi)
+]
+
+st.markdown("---")
 st.subheader("Analiz Parametreleri")
 col1, col2 = st.columns(2)
 
@@ -39,8 +56,9 @@ with col2:
     secilen_periyot_kodu = periyot_secenekleri[secilen_periyot_adi]
 st.markdown("---")
 
-with st.spinner(f"'{secilen_metrik_adi}' için kohort analizi yapılıyor..."):
-    heatmap_matrix = kohort_analizi_yap(temiz_df, metric=secilen_metrik_kodu, period=secilen_periyot_kodu)
+with st.spinner(f"'{secilen_periyot_adi}' periyotlar ve '{secilen_metrik_adi}' metriği için kohort analizi yapılıyor..."):
+    heatmap_matrix = kohort_analizi_yap(filtrelenmis_df, metric=secilen_metrik_kodu, period=secilen_periyot_kodu)
+
 
 st.success("Analiz tamamlandı!")
 

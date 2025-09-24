@@ -8,7 +8,7 @@ from analysis_engine import (rfm_skorlarini_hesapla, musterileri_segmentle,
                            churn_tahmin_modeli_olustur, clv_hesapla, 
                            market_basket_analizi_yap, satis_tahmini_yap, 
                            tahmin_grafigini_ciz, urun_tavsiyesi_uret,
-                           pdf_raporu_olustur, musteri_yolculugu_analizi_yap) 
+                           pdf_raporu_olustur, musteri_yolculugu_analizi_yap)
 
 st.set_page_config(page_title="Müşteri Detayı", layout="wide")
 
@@ -16,6 +16,7 @@ st.set_page_config(page_title="Müşteri Detayı", layout="wide")
 def veriyi_getir_ve_isle():
     dosya_adi = 'satis_verileri_guncellenmis.json' 
     temiz_df = veriyi_yukle_ve_temizle(dosya_adi)
+    
     rfm_df = rfm_skorlarini_hesapla(temiz_df)
     segmentli_df = musterileri_segmentle(rfm_df)
     churn_df, _, _, _, _, _ = churn_tahmin_modeli_olustur(segmentli_df)
@@ -26,9 +27,9 @@ def veriyi_getir_ve_isle():
     
     return temiz_df, clv_df, birliktelik_kurallari, yolculuk_pivot
 
-temiz_df, sonuclar_df, birliktelik_kurallari, yolculuk_pivot = veriyi_getir_ve_isle()
-
 st.title("👤 Müşteri Detay Analizi ve Satış Tahmini")
+
+temiz_df, sonuclar_df, birliktelik_kurallari, yolculuk_pivot = veriyi_getir_ve_isle()
 
 musteri_listesi = sonuclar_df.index.tolist()
 secilen_musteri = st.selectbox("Analiz Yapmak İçin Müşteri Seçin", musteri_listesi)
@@ -51,30 +52,53 @@ if secilen_musteri:
     col4.metric("Yaşam Boyu Değeri (CLV)", f"{musteri_verisi['CLV_Net_Kar']:,.0f} €")
     st.markdown("---")
 
+    # --- YENİ BÖLÜM: Tarih Filtresi ---
+    st.subheader("Analiz Dönemini Seçin")
+    min_tarih = musteri_satis_verisi['Tarih'].min().date()
+    max_tarih = musteri_satis_verisi['Tarih'].max().date()
+    col_tarih1, col_tarih2 = st.columns(2)
+    with col_tarih1:
+        baslangic_tarihi_detay = st.date_input("Başlangıç Tarihi", min_tarih, min_value=min_tarih, max_value=max_tarih, key="detay_start")
+    with col_tarih2:
+        bitis_tarihi_detay = st.date_input("Bitiş Tarihi", max_tarih, min_value=min_tarih, max_value=max_tarih, key="detay_end")
+
+    musteri_satis_verisi_filtrelenmis = musteri_satis_verisi[
+        (musteri_satis_verisi['Tarih'].dt.date >= baslangic_tarihi_detay) & 
+        (musteri_satis_verisi['Tarih'].dt.date <= bitis_tarihi_detay)
+    ]
+    st.markdown("---")
+    # --- YENİ BÖLÜM SONU ---
+    
     st.subheader("📋 Geçmiş Davranış Özeti")
     col_ozet1, col_ozet2 = st.columns(2)
-
+    
     with col_ozet1:
-        st.markdown("**Alışveriş Alışkanlıkları**")
-        if 'Kategori' in musteri_satis_verisi.columns:
-            en_cok_alinan_kategori = musteri_satis_verisi['Kategori'].mode()
-            if not en_cok_alinan_kategori.empty:
-                st.write(f"🏷️ **Favori Kategorisi:** {en_cok_alinan_kategori.iloc[0]}")
-        gunluk_harcama = musteri_satis_verisi.groupby(musteri_satis_verisi['Tarih'].dt.date)['ToplamTutar'].sum()
-        st.write(f"🛒 **Ortalama Sepet Tutarı:** {gunluk_harcama.mean():,.2f} €")
-        alisveris_gunleri = musteri_satis_verisi['Tarih'].dt.date.unique()
-        if len(alisveris_gunleri) > 1:
-            alisveris_gunleri.sort()
-            ortalama_gun_farki = (pd.to_datetime(alisveris_gunleri[1:]) - pd.to_datetime(alisveris_gunleri[:-1])).to_series().dt.days.mean()
-            st.write(f"🔄 **Alışveriş Sıklığı (Ort.):** {ortalama_gun_farki:.1f} günde bir")
+        st.markdown("**Alışveriş Alışkanlıkları (Seçilen Dönem)**")
+        
+        if not musteri_satis_verisi_filtrelenmis.empty:
+            if 'Kategori' in musteri_satis_verisi_filtrelenmis.columns:
+                en_cok_alinan_kategori = musteri_satis_verisi_filtrelenmis['Kategori'].mode()
+                if not en_cok_alinan_kategori.empty:
+                    st.write(f"🏷️ **Favori Kategorisi:** {en_cok_alinan_kategori.iloc[0]}")
+
+            gunluk_harcama = musteri_satis_verisi_filtrelenmis.groupby(musteri_satis_verisi_filtrelenmis['Tarih'].dt.date)['ToplamTutar'].sum()
+            st.write(f"🛒 **Ortalama Sepet Tutarı:** {gunluk_harcama.mean():,.2f} €")
+            
+            alisveris_gunleri = musteri_satis_verisi_filtrelenmis['Tarih'].dt.date.unique()
+            if len(alisveris_gunleri) > 1:
+                alisveris_gunleri.sort()
+                ortalama_gun_farki = (pd.to_datetime(alisveris_gunleri[1:]) - pd.to_datetime(alisveris_gunleri[:-1])).to_series().dt.days.mean()
+                st.write(f"🔄 **Alışveriş Sıklığı (Ort.):** {ortalama_gun_farki:.1f} günde bir")
+        else:
+            st.info("Seçilen dönemde müşterinin işlemi bulunmuyor.")
+
     with col_ozet2:
-        st.markdown("**Son 5 İşlemi**")
-        son_islemler = musteri_satis_verisi.sort_values('Tarih', ascending=False).head(5)
-        st.dataframe(
-            son_islemler[['Tarih', 'UrunKodu', 'ToplamTutar']].style.format({
-                'Tarih': '{:%d-%m-%Y}', 'ToplamTutar': '{:,.2f} €'
-            })
-        )
+        st.markdown("**Dönemin En Popüler 5 Ürünü (Ciroya Göre)**")
+        if not musteri_satis_verisi_filtrelenmis.empty:
+            top_5_urunler = musteri_satis_verisi_filtrelenmis.groupby('UrunKodu')['ToplamTutar'].sum().nlargest(5)
+            st.dataframe(top_5_urunler.reset_index().style.format({'ToplamTutar': '{:,.2f} €'}))
+        else:
+            st.info("Seçilen dönemde gösterilecek ürün bulunmuyor.")
     st.markdown("---")
 
     st.subheader("📊 Müşterinin Kendi Segmentine Göre Konumu")
